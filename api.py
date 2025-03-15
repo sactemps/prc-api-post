@@ -11,21 +11,23 @@ class Post:
         self.remaining = None
         self.limit = None
 
-async def post(self, endpoint, json: dict, retries: int = 3):
+async def post(self, endpoint, post_json: dict, retries: int = 3):
     async with self.lock:
         for i in range(retries):
             now = time.time()
             
             if self._post.remaining is not None and self._post.reset is not None:
                 if self._post.remaining < 1:
-                    await asyncio.sleep(self._post.reset - now)
+                    sleep_time = max(0, self._post.reset - now)
+                    await asyncio.sleep(sleep_time)
 
             async with self.bot.session.post(
                 url=self.url_api_base + endpoint,
                 headers=self.headers,
-                json=json
-            ) as response: #aiohttp.ClientSession, authentication
+                json=post_json
+            ) as response:
                 _json = await response.json()
+                _json.update(post_json)
 
                 headers = response.headers
                 remaining = headers.get("X-RateLimit-Remaining")
@@ -51,11 +53,11 @@ async def post(self, endpoint, json: dict, retries: int = 3):
                     try:
                         json = await response.json()
                     except:
-                        json = {"message": "JSON not returned"}
+                        json = {"message": "Valid JSON not returned"}
                     
                     if i == retries - 1:
                         raise ApiException(f"Failed to send request", response_error.status)
 
                     if status == 429:
-                        retry_after = json.get("retry_after", 5) + 1 # adding 1 since retry_after is usually inaccurate
+                        retry_after = json.get("retry_after", 5)
                         await asyncio.sleep(retry_after)
